@@ -1,0 +1,248 @@
+V<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smolov Tracker Custom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .completed {
+            background-color: #f0fdf4 !important;
+            border-left: 8px solid #22c55e !important;
+        }
+        .completed .check-box {
+            background-color: #22c55e;
+            border-color: #22c55e;
+        }
+        .completed .text-main {
+            text-decoration: line-through;
+            color: #166534;
+        }
+        .tab-active {
+            color: #f97316;
+            border-top: 4px solid #f97316;
+        }
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 pb-32">
+
+    <!-- Header -->
+    <header class="bg-white border-b px-6 py-4 sticky top-0 z-40 shadow-sm flex justify-between items-center">
+        <div>
+            <h1 id="current-title-text" class="text-2xl font-black text-slate-800 tracking-tight">Squat</h1>
+            <p id="current-subtitle" class="text-xs font-bold text-gray-400"></p>
+        </div>
+        <button onclick="toggleSettings()" class="bg-gray-100 p-2 rounded-lg">
+            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        </button>
+    </header>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+            <h2 class="text-xl font-bold mb-4">プログラム設定</h2>
+            <div id="settings-fields" class="space-y-4 text-sm">
+                <!-- Inputs injected here -->
+            </div>
+            <button onclick="saveAndApplySettings()" class="w-full mt-6 bg-orange-500 text-white font-bold py-4 rounded-xl shadow-lg active:bg-orange-600 transition-colors">
+                設定を保存して適用
+            </button>
+            <button onclick="toggleSettings()" class="w-full mt-2 text-gray-400 py-2">閉じる</button>
+        </div>
+    </div>
+
+    <main class="p-4 space-y-6">
+        <div id="section-sq" class="menu-section space-y-4"></div>
+        <div id="section-bp" class="menu-section hidden space-y-4"></div>
+        <div id="section-dl" class="menu-section hidden space-y-4"></div>
+
+        <div class="pt-10 flex flex-col gap-3">
+            <button onclick="resetProgress()" class="w-full py-4 bg-gray-200 text-gray-600 font-bold rounded-xl text-lg">
+                進捗（チェック）をリセット
+            </button>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center h-20 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] z-50">
+        <button onclick="switchTab('sq')" id="btn-sq" class="flex flex-col items-center justify-center w-full h-full tab-active">
+            <span class="text-xl font-black uppercase">SQ</span>
+            <span class="text-[10px]">スクワット</span>
+        </button>
+        <button onclick="switchTab('bp')" id="btn-bp" class="flex flex-col items-center justify-center w-full h-full text-gray-400">
+            <span class="text-xl font-black uppercase">BP</span>
+            <span class="text-[10px]">ベンチ</span>
+        </button>
+        <button onclick="switchTab('dl')" id="btn-dl" class="flex flex-col items-center justify-center w-full h-full text-gray-400">
+            <span class="text-xl font-black uppercase">DL</span>
+            <span class="text-[10px]">デッド</span>
+        </button>
+    </nav>
+
+    <script>
+        // Initial Default Data
+        const defaultSettings = {
+            sq: { name: 'Squat', rm: 190, inc: 5, days: 4 },
+            bp: { name: 'Bench Press', rm: 120, inc: 2.5, days: 3 },
+            dl: { name: 'Deadlift', rm: 190, inc: 5, days: 2 }
+        };
+
+        let currentType = 'sq';
+        let programSettings = JSON.parse(localStorage.getItem('smolov_settings')) || defaultSettings;
+
+        // Base patterns (Sets x Reps)
+        const patterns = {
+            sq: [
+                { label: 'Day 1', pct: 0.70, sets: 9, reps: 3 },
+                { label: 'Day 2', pct: 0.75, sets: 7, reps: 5 },
+                { label: 'Day 3', pct: 0.80, sets: 5, reps: 7 },
+                { label: 'Day 4', pct: 0.85, sets: 3, reps: 10 }
+            ],
+            bp: [
+                { label: 'Day 1', pct: 0.70, sets: 9, reps: 3 },
+                { label: 'Day 2', pct: 0.75, sets: 7, reps: 5 },
+                { label: 'Day 3', pct: 0.80, sets: 5, reps: 7 }
+            ],
+            dl: [
+                { label: 'Day 1', pct: 0.80, sets: 5, reps: 5 }, // Increased from 0.75 to 0.80
+                { label: 'Day 2', pct: 0.85, sets: 3, reps: 7 }  // Increased from 0.80 to 0.85
+            ]
+        };
+
+        function switchTab(type) {
+            currentType = type;
+            document.querySelectorAll('.menu-section').forEach(s => s.classList.add('hidden'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('tab-active', 'text-gray-400'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.add('text-gray-400'));
+
+            document.getElementById(`section-${type}`).classList.remove('hidden');
+            document.getElementById(`btn-${type}`).classList.add('tab-active');
+            document.getElementById(`btn-${type}`).classList.remove('text-gray-400');
+            
+            updateHeader();
+            window.scrollTo(0, 0);
+        }
+
+        function updateHeader() {
+            const config = programSettings[currentType];
+            document.getElementById('current-title-text').innerText = config.name;
+            document.getElementById('current-subtitle').innerText = `1RM: ${config.rm}kg / 増加: ${config.inc}kg`;
+        }
+
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            const isHidden = modal.classList.contains('hidden');
+            
+            if (isHidden) {
+                const fields = document.getElementById('settings-fields');
+                const config = programSettings[currentType];
+                fields.innerHTML = `
+                    <div class="font-bold text-orange-500 mb-2">${config.name} の設定</div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">1RM基準 (kg)</label>
+                        <input type="number" id="input-rm" value="${config.rm}" step="0.5" class="w-full border p-3 rounded-xl text-lg font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">週ごとの増加重量 (kg)</label>
+                        <input type="number" id="input-inc" value="${config.inc}" step="0.5" class="w-full border p-3 rounded-xl text-lg font-bold">
+                    </div>
+                `;
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function saveAndApplySettings() {
+            const newRM = parseFloat(document.getElementById('input-rm').value);
+            const newInc = parseFloat(document.getElementById('input-inc').value);
+            
+            programSettings[currentType].rm = newRM;
+            programSettings[currentType].inc = newInc;
+            
+            localStorage.setItem('smolov_settings', JSON.stringify(programSettings));
+            renderAll();
+            updateHeader();
+            toggleSettings();
+        }
+
+        function renderAll() {
+            Object.keys(programSettings).forEach(type => {
+                const config = programSettings[type];
+                const container = document.getElementById(`section-${type}`);
+                const currentPattern = patterns[type];
+                let html = '';
+
+                for (let w = 1; w <= 3; w++) {
+                    const weekWeightAdd = (w - 1) * config.inc;
+                    html += `<div class="mb-2 mt-6 flex justify-between items-center px-2"><h2 class="text-xl font-black text-orange-500 italic uppercase">Week ${w}</h2><span class="text-[10px] text-gray-400 font-bold tracking-widest">+${weekWeightAdd}kg</span></div>`;
+                    
+                    currentPattern.forEach((pattern, index) => {
+                        const weight = Math.round((config.rm * pattern.pct + weekWeightAdd) * 2) / 2;
+                        const id = `${type}-v7-w${w}-d${index}`;
+
+                        html += `
+                            <div id="${id}" onclick="toggleItem('${id}')" class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex items-center gap-4 transition-all active:scale-[0.98]">
+                                <div class="check-box w-10 h-10 rounded-xl border-2 border-gray-100 flex-shrink-0 flex items-center justify-center transition-colors">
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
+                                </div>
+                                <div class="flex-grow">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-[10px] font-black text-gray-300 uppercase tracking-widest">${pattern.label}</span>
+                                        <span class="text-[10px] font-bold text-gray-400">${Math.round(pattern.pct * 100)}%</span>
+                                    </div>
+                                    <div class="flex items-baseline justify-between">
+                                        <span class="text-main text-3xl font-black tracking-tighter">${weight}<span class="text-sm font-bold ml-1 text-gray-400">kg</span></span>
+                                        <span class="text-main text-xl text-slate-800 font-black">
+                                            ${pattern.sets} <span class="text-xs text-gray-300 mx-1">×</span> ${pattern.reps}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                container.innerHTML = html;
+            });
+            loadProgress();
+        }
+
+        function toggleItem(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.toggle('completed');
+            saveProgress();
+        }
+
+        function saveProgress() {
+            const completedIds = Array.from(document.querySelectorAll('.completed')).map(el => el.id);
+            localStorage.setItem('smolov_v7_progress', JSON.stringify(completedIds));
+        }
+
+        function loadProgress() {
+            const data = JSON.parse(localStorage.getItem('smolov_v7_progress') || '[]');
+            data.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('completed');
+            });
+        }
+
+        function resetProgress() {
+            if (confirm('進捗をリセットしますか？')) {
+                localStorage.removeItem('smolov_v7_progress');
+                location.reload();
+            }
+        }
+
+        // Init
+        renderAll();
+        updateHeader();
+    </script>
+</body>
+</html>
